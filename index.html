@@ -274,7 +274,6 @@
                 <div class="bg-gray-800 rounded-2xl p-5 mb-4">
                     <h3 class="font-semibold mb-3 text-purple-400">🌙 夜間行動</h3>
                     <p class="text-gray-400 mb-4">請輸入你的名字以執行夜間技能</p>
-                    <p class="text-xs text-gray-500 mb-3">已完成行動人數：<span id="night-done-count">0</span> / <span id="night-total-count">0</span></p>
                     <input type="text" id="night-auth-input" placeholder="請輸入你的名字"
                            class="w-full px-4 py-4 bg-gray-700 rounded-xl text-white text-lg text-center mb-4 focus:outline-none focus:ring-2 focus:ring-purple-400"
                            maxlength="10" autocomplete="off">
@@ -291,7 +290,7 @@
             <div id="night-action-area" class="hidden">
                 <div class="bg-gray-800 rounded-2xl p-5 mb-4">
                     <h3 class="font-semibold mb-3 text-purple-400">🌙 夜間行動</h3>
-                    <p class="text-gray-300 mb-4" id="night-action-desc">請選擇你的行動目標</p>
+                    <div class="text-gray-300 mb-4" id="night-action-desc">請選擇你的行動目標</div>
                     
                     <div id="night-target-list" class="space-y-2 mb-4">
                     </div>
@@ -344,7 +343,6 @@
                     <h3 class="font-semibold mb-3 text-amber-400">🗳️ 投票階段</h3>
                     <p class="text-gray-400 mb-4">點擊下方玩家選擇你要投出的對象</p>
                     
-                    <!-- 投票選項按鈕區域 -->
                     <div id="vote-options-container" class="mb-4">
                     </div>
                     
@@ -435,6 +433,7 @@
             
             // 夜晚行動
             nightKills: [],
+            nightWolfKills: [], // 當晚所有狼人選擇的擊殺目標
             witchSaveUsed: false,
             witchKillUsed: false,
             witchSaveTarget: null,
@@ -466,6 +465,16 @@
             hunter: { name: '獵人', icon: '🏹', team: 'good', desc: '白天時可以發表說話與投票，死亡時可以選擇開槍帶走一位玩家', hasNightAction: false },
             werewolf: { name: '狼人', icon: '🐺', team: 'bad', desc: '白天時可以發表說話與投票，晚上時可以選擇擊殺一位玩家', hasNightAction: true }
         };
+
+        // ==================== 工具函式：隨機打亂陣列副本 ====================
+        function shuffleArrayCopy(arr) {
+            const copy = [...arr];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+        }
 
         // ==================== 設定頁面邏輯 ====================
         function updatePlayerCount() {
@@ -549,20 +558,13 @@
             
             let attempts = 0;
             do {
-                shuffleArray(pool);
+                shuffleArrayCopy(pool);
                 attempts++;
             } while (gameState.lastGameRoles && 
                      arraysEqual(pool, gameState.lastGameRoles) && 
                      attempts < 100);
             
             gameState.rolePool = pool;
-        }
-
-        function shuffleArray(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
         }
 
         function arraysEqual(a, b) {
@@ -578,14 +580,17 @@
                 document.getElementById('player-name-input').focus();
             }, 100);
             
+            // 僅顯示數量，不顯示玩家名字
             const preview = document.getElementById('player-list-preview');
-            preview.innerHTML = '';
-            gameState.players.forEach((player) => {
-                const div = document.createElement('div');
-                div.className = 'bg-gray-800 rounded-xl px-4 py-3 flex items-center justify-between';
-                div.innerHTML = `<span>✅ ${player.name}</span><span class="text-gray-500 text-sm">已確認</span>`;
-                preview.appendChild(div);
-            });
+            preview.innerHTML = `
+                <div class="bg-gray-800 rounded-xl px-4 py-4 text-center">
+                    <p class="text-gray-300">
+                        已填寫名稱的玩家 
+                        <span class="font-bold text-amber-400">${gameState.players.length}</span> 
+                        / ${gameState.playerCount}
+                    </p>
+                </div>
+            `;
         }
 
         function submitName() {
@@ -600,10 +605,12 @@
             }
             
             const assignedRole = gameState.rolePool.shift();
+            
             gameState.players.push({
                 name: name,
                 role: assignedRole,
-                isDead: false
+                isDead: false,
+                index: gameState.currentPlayerIndex + 1
             });
             
             showRoleReveal();
@@ -672,10 +679,11 @@
             }
         }
 
-        // ==================== 夜晚階段（自由順序） ====================
+        // ==================== 夜晚階段 ====================
         function startNight() {
             gameState.phase = 'night';
             gameState.nightKills = [];
+            gameState.nightWolfKills = []; // 重置當晚狼人擊殺目標
             gameState.witchSaveTarget = null;
             gameState.witchKillTarget = null;
             gameState.nightActions = {};
@@ -684,11 +692,6 @@
             gameState.players.forEach(p => {
                 gameState.nightActions[p.name] = false;
             });
-            
-            const nightActionPlayers = gameState.players.filter(p => 
-                !p.isDead && roleInfo[p.role].hasNightAction
-            );
-            gameState.totalNightActions = nightActionPlayers.length;
             
             showTransition('天黑請閉眼', '請有夜間技能的玩家輪流輸入名字執行動作', () => {
                 showNightAuthScreen();
@@ -705,10 +708,6 @@
             document.getElementById('voting-area').classList.add('hidden');
             document.getElementById('night-result-area').classList.add('hidden');
             document.getElementById('vote-result-area').classList.add('hidden');
-            
-            const doneCount = Object.values(gameState.nightActions).filter(v => v).length;
-            document.getElementById('night-done-count').textContent = doneCount;
-            document.getElementById('night-total-count').textContent = gameState.totalNightActions;
             
             document.getElementById('night-auth-input').value = '';
             setTimeout(() => {
@@ -794,51 +793,72 @@
             if (type === 'werewolf') {
                 descEl.textContent = '🐺 請選擇你要擊殺的玩家';
                 witchButtons.classList.add('hidden');
-                generateNightTargetList(targetList, true);
+                generateNightTargetList(targetList, false, false);
             } else if (type === 'seer') {
                 descEl.textContent = '🔮 請選擇你要查驗的玩家';
                 witchButtons.classList.add('hidden');
-                generateNightTargetList(targetList, true);
+                generateNightTargetList(targetList, true, true);
             } else if (type === 'witch') {
-                descEl.textContent = '🧙‍♀️ 請選擇你的行動';
                 witchButtons.classList.remove('hidden');
                 
+                // 更新藥水按鈕狀態
                 document.getElementById('witch-save-btn').disabled = gameState.witchSaveUsed;
                 document.getElementById('witch-save-btn').classList.toggle('opacity-50', gameState.witchSaveUsed);
                 document.getElementById('witch-kill-btn').disabled = gameState.witchKillUsed;
                 document.getElementById('witch-kill-btn').classList.toggle('opacity-50', gameState.witchKillUsed);
                 
-                generateNightTargetList(targetList, true);
+                // 若已有狼人選定目標，顯示被選中死亡提示
+                if (gameState.nightWolfKills.length > 0 && !gameState.witchSaveUsed) {
+                    const uniqueKills = [...new Set(gameState.nightWolfKills)];
+                    const previewTarget = uniqueKills[Math.floor(Math.random() * uniqueKills.length)];
+                    descEl.innerHTML = `
+                        🧙‍♀️ 請選擇你的行動
+                        <br>
+                        <span class="text-red-400 font-semibold">${previewTarget} 被選中死亡，是否拯救？</span>
+                    `;
+                } else {
+                    descEl.textContent = '🧙‍♀️ 請選擇你的行動';
+                }
+                
+                generateNightTargetList(targetList, false, false);
             }
             
             startTimer(gameState.nightTime, () => submitNightAction(true));
             
             showScreen('game-screen');
-            updatePlayerStatusList();
         }
 
-        function generateNightTargetList(container, includeSelf) {
+        // 生成夜晚目標列表：showIndex=是否顯示玩家索引, sorted=是否按索引排序
+        function generateNightTargetList(container, showIndex, sorted) {
             container.innerHTML = '';
-            gameState.players.forEach((p, i) => {
-                if (!includeSelf && p.name === gameState.currentNightPlayer.name) return;
-                
+            
+            let list;
+            if (sorted) {
+                list = [...gameState.players].sort((a, b) => a.index - b.index);
+            } else {
+                list = shuffleArrayCopy(gameState.players);
+            }
+            
+            list.forEach((p) => {
                 const btn = document.createElement('button');
                 btn.className = `player-card w-full px-4 py-3 rounded-xl text-left flex justify-between items-center ${p.isDead ? 'bg-gray-700 dead-player' : 'bg-gray-700 hover:bg-gray-600'}`;
+                
+                const displayText = showIndex ? `玩家${p.index}：${p.name}` : p.name;
                 btn.innerHTML = `
-                    <span>${p.isDead ? '💀 ' : ''}${p.name}</span>
+                    <span>${p.isDead ? '💀 ' : ''}${displayText}</span>
                     <span class="text-gray-500 text-sm">${p.isDead ? '已死亡' : '存活'}</span>
                 `;
-                btn.onclick = () => selectNightTarget(i, btn);
+                btn.onclick = () => selectNightTarget(p, btn);
                 container.appendChild(btn);
             });
         }
 
-        function selectNightTarget(index, btn) {
+        function selectNightTarget(playerObj, btn) {
             document.querySelectorAll('#night-target-list button').forEach(b => {
                 b.classList.remove('ring-2', 'ring-amber-400');
             });
             btn.classList.add('ring-2', 'ring-amber-400');
-            gameState.selectedNightTarget = index;
+            gameState.selectedNightTarget = gameState.players.findIndex(p => p.name === playerObj.name);
         }
 
         function witchUsePotion(type) {
@@ -869,13 +889,15 @@
             if (type === 'werewolf' && gameState.selectedNightTarget !== null) {
                 const target = gameState.players[gameState.selectedNightTarget];
                 gameState.nightKills.push(target.name);
+                gameState.nightWolfKills.push(target.name); // 記錄當晚狼人擊殺目標
             } else if (type === 'seer' && gameState.selectedNightTarget !== null) {
                 const target = gameState.players[gameState.selectedNightTarget];
                 gameState.seerChecks[player.name] = {
                     target: target.name,
                     role: target.role
                 };
-                alert(`🔮 查驗結果：\n${target.name} 的身分是 ${roleInfo[target.role].icon} ${roleInfo[target.role].name}`);
+                
+                alert(`🔮 查驗結果：\n玩家${target.index}：${target.name}\n身分是 ${roleInfo[target.role].icon} ${roleInfo[target.role].name}`);
             } else if (type === 'witch') {
                 if (gameState.selectedWitchAction === 'save' && !gameState.witchSaveUsed) {
                     if (gameState.selectedNightTarget !== null) {
@@ -906,21 +928,26 @@
         function processNightResults() {
             let deaths = [];
             
-            if (gameState.nightKills.length > 0) {
-                const uniqueKills = [...new Set(gameState.nightKills)];
+            // 處理狼人殺人：多個狼人選擇不同時隨機選一個
+            if (gameState.nightWolfKills.length > 0) {
+                const uniqueKills = [...new Set(gameState.nightWolfKills)];
                 const finalKill = uniqueKills[Math.floor(Math.random() * uniqueKills.length)];
                 
+                // 檢查女巫是否救了這個人
                 if (gameState.witchSaveTarget !== finalKill) {
                     deaths.push(finalKill);
                 }
             }
             
+            // 處理女巫毒人
             if (gameState.witchKillTarget) {
                 deaths.push(gameState.witchKillTarget);
             }
             
+            // 去除重複
             deaths = [...new Set(deaths)];
             
+            // 標記死亡
             deaths.forEach(name => {
                 const player = gameState.players.find(p => p.name === name);
                 if (player) {
@@ -1014,7 +1041,8 @@
             gameState.speechOrder = gameState.players
                 .filter(p => !p.isDead)
                 .map(p => p.name);
-            shuffleArray(gameState.speechOrder);
+            
+            gameState.speechOrder = shuffleArrayCopy(gameState.speechOrder);
             
             gameState.currentSpeakerIndex = 0;
             updateSpeakerUI();
@@ -1063,49 +1091,42 @@
         function showVotingScreen() {
             gameState.selectedVoteTarget = null;
             
-            // 重置確認按鈕
             const voteBtn = document.getElementById('submit-vote-btn');
             voteBtn.disabled = true;
             voteBtn.classList.add('opacity-50', 'cursor-not-allowed');
             
-            // 生成投票選項
             generateVoteOptions();
             
             showScreen('game-screen');
             updatePlayerStatusList();
         }
 
-        // 核心修復：生成投票選項按鈕
         function generateVoteOptions() {
             const container = document.getElementById('vote-options-container');
             container.innerHTML = '';
             
-            for (let i = 0; i < gameState.players.length; i++) {
-                const player = gameState.players[i];
-                if (player.isDead) continue;
-                
+            const shuffledPlayers = shuffleArrayCopy(gameState.players.filter(p => !p.isDead));
+            
+            shuffledPlayers.forEach((player) => {
                 const btn = document.createElement('button');
                 btn.className = 'vote-option';
                 btn.textContent = player.name;
-                btn.setAttribute('data-index', i);
+                btn.setAttribute('data-name', player.name);
                 
                 btn.onclick = function() {
-                    // 取消其他選中
                     const allBtns = container.querySelectorAll('.vote-option');
                     allBtns.forEach(b => b.classList.remove('selected'));
                     
-                    // 選中當前
                     this.classList.add('selected');
-                    gameState.selectedVoteTarget = parseInt(this.getAttribute('data-index'));
+                    gameState.selectedVoteTarget = gameState.players.findIndex(p => p.name === this.getAttribute('data-name'));
                     
-                    // 啟用確認按鈕
                     const voteBtn = document.getElementById('submit-vote-btn');
                     voteBtn.disabled = false;
                     voteBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                 };
                 
                 container.appendChild(btn);
-            }
+            });
         }
 
         function submitVote() {
@@ -1124,7 +1145,6 @@
                 return;
             }
             
-            // 一般投票
             const currentVoterName = gameState.votingOrder[gameState.currentVoterIndex];
             
             if (gameState.selectedVoteTarget !== null) {
@@ -1179,7 +1199,7 @@
                 gameState.votedOut = votedOut;
             }
             
-            showVoteResult(resultText);
+            showVoteResult(result);
         }
 
         function showVoteResult(text) {
@@ -1251,7 +1271,9 @@
             const list = document.getElementById('final-role-list');
             list.innerHTML = '';
             
-            gameState.players.forEach(p => {
+            const shuffled = shuffleArrayCopy(gameState.players);
+            
+            shuffled.forEach(p => {
                 const info = roleInfo[p.role];
                 const div = document.createElement('div');
                 div.className = `flex justify-between items-center p-3 rounded-xl ${p.isDead ? 'bg-gray-700/50' : 'bg-gray-700'}`;
@@ -1288,7 +1310,7 @@
             showScreen('setup-screen');
         }
 
-        // ==================== 工具函式 ====================
+        // ==================== 通用工具函式 ====================
         function showScreen(screenId) {
             const screens = [
                 'setup-screen', 'name-input-screen', 'role-reveal-screen',
@@ -1352,7 +1374,9 @@
             const list = document.getElementById('player-status-list');
             list.innerHTML = '';
             
-            gameState.players.forEach(p => {
+            const shuffled = shuffleArrayCopy(gameState.players);
+            
+            shuffled.forEach(p => {
                 const div = document.createElement('div');
                 div.className = `flex justify-between items-center px-4 py-2 rounded-lg ${p.isDead ? 'bg-gray-700/30 dead-player' : 'bg-gray-700/50'}`;
                 div.innerHTML = `
