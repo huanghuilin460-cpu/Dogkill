@@ -328,7 +328,8 @@
                     <div id="vote-target-list" class="space-y-2 mb-4">
                     </div>
                     
-                    <button onclick="submitVote()" class="w-full btn-large bg-amber-500 rounded-xl">
+                    <button id="submit-vote-btn" onclick="submitVote()" 
+                            class="w-full btn-large bg-amber-500 rounded-xl opacity-50 cursor-not-allowed" disabled>
                         確認投票
                     </button>
                 </div>
@@ -1027,6 +1028,11 @@
                     targetList.appendChild(btn);
                 }
             });
+
+            // 獵人開槍啟用確認按鈕
+            const voteBtn = document.getElementById('submit-vote-btn');
+            voteBtn.disabled = false;
+            voteBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             
             gameState.currentHunter = hunterName;
             
@@ -1051,8 +1057,10 @@
                 return;
             }
             
-            // 一般投票
-            const currentVoter = gameState.players[gameState.currentVoterIndex];
+            // 一般投票：正確取得當前投票玩家
+            const currentVoterName = gameState.votingOrder[gameState.currentVoterIndex];
+            const currentVoter = gameState.players.find(p => p.name === currentVoterName);
+            
             if (gameState.selectedVoteTarget !== null) {
                 const target = gameState.players[gameState.selectedVoteTarget];
                 gameState.votes[currentVoter.name] = target.name;
@@ -1132,8 +1140,12 @@
         }
 
         function showVotingScreen() {
-            const voter = gameState.votingOrder[gameState.currentVoterIndex];
             gameState.selectedVoteTarget = null;
+            
+            // 重置確認按鈕為禁用狀態
+            const voteBtn = document.getElementById('submit-vote-btn');
+            voteBtn.disabled = true;
+            voteBtn.classList.add('opacity-50', 'cursor-not-allowed');
             
             const targetList = document.getElementById('vote-target-list');
             targetList.innerHTML = '';
@@ -1149,6 +1161,10 @@
                         });
                         btn.classList.add('ring-2', 'ring-amber-400');
                         gameState.selectedVoteTarget = i;
+                        
+                        // 選擇目標後啟用確認按鈕
+                        voteBtn.disabled = false;
+                        voteBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                     };
                     targetList.appendChild(btn);
                 }
