@@ -250,6 +250,20 @@
                 </div>
             </div>
             
+            <!-- 夜晚身分驗證 -->
+            <div id="night-auth-area" class="hidden">
+                <div class="bg-gray-800 rounded-2xl p-5 mb-4">
+                    <h3 class="font-semibold mb-3 text-purple-400">🌙 夜間身分驗證</h3>
+                    <p class="text-gray-400 mb-4">請輸入你的名字以驗證身分</p>
+                    <input type="text" id="night-auth-input" placeholder="請輸入你的名字"
+                           class="w-full px-4 py-4 bg-gray-700 rounded-xl text-white text-lg text-center mb-4 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                           maxlength="10" autocomplete="off">
+                    <button onclick="submitNightAuth()" class="w-full btn-large bg-purple-600 rounded-xl">
+                        確認身分
+                    </button>
+                </div>
+            </div>
+            
             <!-- 夜晚行動區 -->
             <div id="night-action-area" class="hidden">
                 <div class="bg-gray-800 rounded-2xl p-5 mb-4">
@@ -691,7 +705,7 @@
             while (gameState.currentNightIndex < gameState.nightOrder.length) {
                 const action = gameState.nightOrder[gameState.currentNightIndex];
                 if (!action.player.isDead && !gameState.nightActions[action.player.name]) {
-                    showNightActionScreen(action);
+                    showNightAuthScreen(action);
                     return;
                 }
                 gameState.currentNightIndex++;
@@ -699,6 +713,50 @@
             
             // 所有夜晚行動完成
             processNightResults();
+        }
+
+        // ===== 夜間身分驗證 =====
+        function showNightAuthScreen(action) {
+            gameState.currentNightAction = action;
+            
+            document.getElementById('phase-name').textContent = '夜晚行動階段';
+            document.getElementById('day-number').textContent = gameState.day;
+            
+            // 只顯示驗證區
+            document.getElementById('night-auth-area').classList.remove('hidden');
+            document.getElementById('night-action-area').classList.add('hidden');
+            document.getElementById('day-speech-area').classList.add('hidden');
+            document.getElementById('voting-area').classList.add('hidden');
+            document.getElementById('night-result-area').classList.add('hidden');
+            document.getElementById('vote-result-area').classList.add('hidden');
+            
+            document.getElementById('night-auth-input').value = '';
+            setTimeout(() => {
+                document.getElementById('night-auth-input').focus();
+            }, 100);
+            
+            showScreen('game-screen');
+            updatePlayerStatusList();
+        }
+
+        function submitNightAuth() {
+            const inputName = document.getElementById('night-auth-input').value.trim();
+            const currentPlayer = gameState.currentNightAction.player;
+            
+            if (!inputName) {
+                alert('請輸入名字');
+                return;
+            }
+            
+            if (inputName !== currentPlayer.name) {
+                alert('名字錯誤！請輸入正確的玩家名字');
+                document.getElementById('night-auth-input').value = '';
+                document.getElementById('night-auth-input').focus();
+                return;
+            }
+            
+            // 驗證成功，進入行動界面
+            showNightActionScreen(gameState.currentNightAction);
         }
 
         function showNightActionScreen(action) {
@@ -709,6 +767,7 @@
             document.getElementById('day-number').textContent = gameState.day;
             
             // 顯示夜晚行動區
+            document.getElementById('night-auth-area').classList.add('hidden');
             document.getElementById('night-action-area').classList.remove('hidden');
             document.getElementById('day-speech-area').classList.add('hidden');
             document.getElementById('voting-area').classList.add('hidden');
@@ -759,7 +818,6 @@
                 generateTargetList(targetList, true);
             }
             
-            gameState.currentNightAction = action;
             startTimer(gameState.nightTime, () => submitNightAction(true));
             
             showScreen('game-screen');
@@ -899,6 +957,7 @@
             document.getElementById('phase-name').textContent = '白天階段';
             
             document.getElementById('night-action-area').classList.add('hidden');
+            document.getElementById('night-auth-area').classList.add('hidden');
             document.getElementById('night-result-area').classList.remove('hidden');
             document.getElementById('day-speech-area').classList.add('hidden');
             document.getElementById('voting-area').classList.add('hidden');
@@ -1014,6 +1073,7 @@
             document.getElementById('phase-name').textContent = '白天發言階段';
             
             document.getElementById('night-action-area').classList.add('hidden');
+            document.getElementById('night-auth-area').classList.add('hidden');
             document.getElementById('night-result-area').classList.add('hidden');
             document.getElementById('day-speech-area').classList.remove('hidden');
             document.getElementById('voting-area').classList.add('hidden');
@@ -1047,6 +1107,7 @@
             } else {
                 showTransition('下一位發言者', '請輪流發言', () => {
                     updateSpeakerUI();
+                    showScreen('game-screen'); // 修復：切回遊戲畫面
                 });
             }
         }
@@ -1329,6 +1390,10 @@
             // 支援Enter鍵提交
             document.getElementById('player-name-input').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') submitName();
+            });
+            
+            document.getElementById('night-auth-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') submitNightAuth();
             });
             
             // 禁用瀏覽器右鍵選單，防止倒退
