@@ -253,13 +253,17 @@
             <!-- 夜晚身分驗證 -->
             <div id="night-auth-area" class="hidden">
                 <div class="bg-gray-800 rounded-2xl p-5 mb-4">
-                    <h3 class="font-semibold mb-3 text-purple-400">🌙 夜間身分驗證</h3>
-                    <p class="text-gray-400 mb-4">請輸入你的名字以驗證身分</p>
+                    <h3 class="font-semibold mb-3 text-purple-400">🌙 夜間行動</h3>
+                    <p class="text-gray-400 mb-4">請輸入你的名字以執行夜間技能</p>
+                    <p class="text-xs text-gray-500 mb-3">已完成行動人數：<span id="night-done-count">0</span> / <span id="night-total-count">0</span></p>
                     <input type="text" id="night-auth-input" placeholder="請輸入你的名字"
                            class="w-full px-4 py-4 bg-gray-700 rounded-xl text-white text-lg text-center mb-4 focus:outline-none focus:ring-2 focus:ring-purple-400"
                            maxlength="10" autocomplete="off">
-                    <button onclick="submitNightAuth()" class="w-full btn-large bg-purple-600 rounded-xl">
+                    <button onclick="submitNightAuth()" class="w-full btn-large bg-purple-600 rounded-xl mb-3">
                         確認身分
+                    </button>
+                    <button onclick="finishAllNightActions()" class="w-full py-3 bg-gray-700 rounded-xl text-sm text-gray-300">
+                        所有玩家都完成行動了
                     </button>
                 </div>
             </div>
@@ -434,11 +438,11 @@
         };
 
         const roleInfo = {
-            villager: { name: '平民', icon: '👨‍🌾', team: 'good', desc: '白天時可以發表說話與投票，晚上時沒有特殊技能行動' },
-            seer: { name: '預言家', icon: '🔮', team: 'good', desc: '白天時可以發表說話與投票，晚上時可以選擇一位玩家查驗職業' },
-            witch: { name: '女巫', icon: '🧙‍♀️', team: 'good', desc: '白天時可以發表說話與投票，晚上時擁有一瓶解藥與一瓶毒藥，每瓶只能使用一次' },
-            hunter: { name: '獵人', icon: '🏹', team: 'good', desc: '白天時可以發表說話與投票，死亡時可以選擇開槍帶走一位玩家' },
-            werewolf: { name: '狼人', icon: '🐺', team: 'bad', desc: '白天時可以發表說話與投票，晚上時可以選擇擊殺一位玩家' }
+            villager: { name: '平民', icon: '👨‍🌾', team: 'good', desc: '白天時可以發表說話與投票，晚上時沒有特殊技能行動', hasNightAction: false },
+            seer: { name: '預言家', icon: '🔮', team: 'good', desc: '白天時可以發表說話與投票，晚上時可以選擇一位玩家查驗職業', hasNightAction: true },
+            witch: { name: '女巫', icon: '🧙‍♀️', team: 'good', desc: '白天時可以發表說話與投票，晚上時擁有一瓶解藥與一瓶毒藥，每瓶只能使用一次', hasNightAction: true },
+            hunter: { name: '獵人', icon: '🏹', team: 'good', desc: '白天時可以發表說話與投票，死亡時可以選擇開槍帶走一位玩家', hasNightAction: false },
+            werewolf: { name: '狼人', icon: '🐺', team: 'bad', desc: '白天時可以發表說話與投票，晚上時可以選擇擊殺一位玩家', hasNightAction: true }
         };
 
         // ==================== 設定頁面邏輯 ====================
@@ -659,7 +663,7 @@
             }
         }
 
-        // ==================== 夜晚階段 ====================
+        // ==================== 夜晚階段（自由順序） ====================
         function startNight() {
             gameState.phase = 'night';
             gameState.nightKills = [];
@@ -673,52 +677,18 @@
                 gameState.nightActions[p.name] = false;
             });
             
-            // 按照順序：狼人 -> 預言家 -> 女巫
-            gameState.nightOrder = getNightActionOrder();
-            gameState.currentNightIndex = 0;
+            // 計算有夜間技能的玩家總數
+            const nightActionPlayers = gameState.players.filter(p => 
+                !p.isDead && roleInfo[p.role].hasNightAction
+            );
+            gameState.totalNightActions = nightActionPlayers.length;
             
-            showTransition('天黑請閉眼', '請將手機傳遞給第一位需要行動的玩家', () => {
-                nextNightAction();
+            showTransition('天黑請閉眼', '請有夜間技能的玩家輪流輸入名字執行動作', () => {
+                showNightAuthScreen();
             });
         }
 
-        function getNightActionOrder() {
-            let order = [];
-            
-            // 狼人（所有存活的狼人）
-            const werewolves = gameState.players.filter(p => p.role === 'werewolf' && !p.isDead);
-            werewolves.forEach(w => order.push({ player: w, type: 'werewolf' }));
-            
-            // 預言家
-            const seers = gameState.players.filter(p => p.role === 'seer' && !p.isDead);
-            seers.forEach(s => order.push({ player: s, type: 'seer' }));
-            
-            // 女巫
-            const witches = gameState.players.filter(p => p.role === 'witch' && !p.isDead);
-            witches.forEach(w => order.push({ player: w, type: 'witch' }));
-            
-            return order;
-        }
-
-        function nextNightAction() {
-            // 跳過已死亡或已行動的玩家
-            while (gameState.currentNightIndex < gameState.nightOrder.length) {
-                const action = gameState.nightOrder[gameState.currentNightIndex];
-                if (!action.player.isDead && !gameState.nightActions[action.player.name]) {
-                    showNightAuthScreen(action);
-                    return;
-                }
-                gameState.currentNightIndex++;
-            }
-            
-            // 所有夜晚行動完成
-            processNightResults();
-        }
-
-        // ===== 夜間身分驗證 =====
-        function showNightAuthScreen(action) {
-            gameState.currentNightAction = action;
-            
+        function showNightAuthScreen() {
             document.getElementById('phase-name').textContent = '夜晚行動階段';
             document.getElementById('day-number').textContent = gameState.day;
             
@@ -729,6 +699,11 @@
             document.getElementById('voting-area').classList.add('hidden');
             document.getElementById('night-result-area').classList.add('hidden');
             document.getElementById('vote-result-area').classList.add('hidden');
+            
+            // 更新已完成人數
+            const doneCount = Object.values(gameState.nightActions).filter(v => v).length;
+            document.getElementById('night-done-count').textContent = doneCount;
+            document.getElementById('night-total-count').textContent = gameState.totalNightActions;
             
             document.getElementById('night-auth-input').value = '';
             setTimeout(() => {
@@ -741,27 +716,53 @@
 
         function submitNightAuth() {
             const inputName = document.getElementById('night-auth-input').value.trim();
-            const currentPlayer = gameState.currentNightAction.player;
             
             if (!inputName) {
                 alert('請輸入名字');
                 return;
             }
             
-            if (inputName !== currentPlayer.name) {
-                alert('名字錯誤！請輸入正確的玩家名字');
+            // 找尋玩家
+            const player = gameState.players.find(p => p.name === inputName);
+            
+            if (!player) {
+                alert('查無此玩家，請輸入正確的名字');
                 document.getElementById('night-auth-input').value = '';
                 document.getElementById('night-auth-input').focus();
                 return;
             }
             
-            // 驗證成功，進入行動界面
-            showNightActionScreen(gameState.currentNightAction);
+            // 檢查是否已死亡
+            if (player.isDead) {
+                alert('你已死亡，本輪無法執行動作');
+                document.getElementById('night-auth-input').value = '';
+                document.getElementById('night-auth-input').focus();
+                return;
+            }
+            
+            // 檢查是否已完成本輪行動
+            if (gameState.nightActions[player.name]) {
+                alert('你已在本輪完成動作');
+                document.getElementById('night-auth-input').value = '';
+                document.getElementById('night-auth-input').focus();
+                return;
+            }
+            
+            // 檢查是否有夜間技能
+            if (!roleInfo[player.role].hasNightAction) {
+                alert('你今晚沒有特殊技能行動，請將手機傳遞給下一位玩家');
+                document.getElementById('night-auth-input').value = '';
+                document.getElementById('night-auth-input').focus();
+                return;
+            }
+            
+            // 驗證成功，進入對應職業的行動介面
+            gameState.currentNightPlayer = player;
+            showNightActionScreen(player);
         }
 
-        function showNightActionScreen(action) {
-            const player = action.player;
-            const type = action.type;
+        function showNightActionScreen(player) {
+            const type = player.role;
             
             document.getElementById('phase-name').textContent = '夜晚行動階段';
             document.getElementById('day-number').textContent = gameState.day;
@@ -769,10 +770,6 @@
             // 顯示夜晚行動區
             document.getElementById('night-auth-area').classList.add('hidden');
             document.getElementById('night-action-area').classList.remove('hidden');
-            document.getElementById('day-speech-area').classList.add('hidden');
-            document.getElementById('voting-area').classList.add('hidden');
-            document.getElementById('night-result-area').classList.add('hidden');
-            document.getElementById('vote-result-area').classList.add('hidden');
             
             // 設定描述
             const descEl = document.getElementById('night-action-desc');
@@ -827,7 +824,7 @@
         function generateTargetList(container, includeSelf) {
             container.innerHTML = '';
             gameState.players.forEach((p, i) => {
-                if (!includeSelf && p.name === gameState.currentNightAction.player.name) return;
+                if (!includeSelf && p.name === gameState.currentNightPlayer.name) return;
                 
                 const btn = document.createElement('button');
                 btn.className = `player-card w-full px-4 py-3 rounded-xl text-left flex justify-between items-center ${p.isDead ? 'bg-gray-700 dead-player' : 'bg-gray-700 hover:bg-gray-600'}`;
@@ -867,8 +864,8 @@
         function submitNightAction(timeout = false) {
             clearTimer();
             
-            const action = gameState.currentNightAction;
-            const player = action.player;
+            const player = gameState.currentNightPlayer;
+            const type = player.role;
             
             // 儲存隊友留言
             const message = document.getElementById('night-message-input').value.trim();
@@ -877,10 +874,10 @@
             }
             
             // 處理行動
-            if (action.type === 'werewolf' && gameState.selectedNightTarget !== null) {
+            if (type === 'werewolf' && gameState.selectedNightTarget !== null) {
                 const target = gameState.players[gameState.selectedNightTarget];
                 gameState.nightKills.push(target.name);
-            } else if (action.type === 'seer' && gameState.selectedNightTarget !== null) {
+            } else if (type === 'seer' && gameState.selectedNightTarget !== null) {
                 const target = gameState.players[gameState.selectedNightTarget];
                 gameState.seerChecks[player.name] = {
                     target: target.name,
@@ -889,7 +886,7 @@
                 
                 // 顯示查驗結果
                 alert(`🔮 查驗結果：\n${target.name} 的身分是 ${roleInfo[target.role].icon} ${roleInfo[target.role].name}`);
-            } else if (action.type === 'witch') {
+            } else if (type === 'witch') {
                 if (gameState.selectedWitchAction === 'save' && !gameState.witchSaveUsed) {
                     if (gameState.selectedNightTarget !== null) {
                         gameState.witchSaveTarget = gameState.players[gameState.selectedNightTarget].name;
@@ -903,13 +900,19 @@
                 }
             }
             
+            // 標記已完成行動
             gameState.nightActions[player.name] = true;
-            gameState.currentNightIndex++;
             
-            // 過渡到下一位
-            showTransition('請傳遞手機', '下一位玩家請準備', () => {
-                nextNightAction();
+            // 回到驗證頁面，繼續下一位
+            showTransition('行動完成', '請將手機傳遞給下一位玩家', () => {
+                showNightAuthScreen();
             });
+        }
+
+        function finishAllNightActions() {
+            if (confirm('確定所有玩家都完成夜間行動了嗎？')) {
+                processNightResults();
+            }
         }
 
         function processNightResults() {
@@ -973,7 +976,6 @@
             } else {
                 let html = `<p class="text-2xl mb-3 text-red-400">💀 昨晚死亡的玩家：</p>`;
                 gameState.lastNightDeaths.forEach(name => {
-                    const player = gameState.players.find(p => p.name === name);
                     html += `<p class="text-xl mb-1">${name}</p>`;
                 });
                 announcement.innerHTML = html;
@@ -1107,7 +1109,7 @@
             } else {
                 showTransition('下一位發言者', '請輪流發言', () => {
                     updateSpeakerUI();
-                    showScreen('game-screen'); // 修復：切回遊戲畫面
+                    showScreen('game-screen');
                 });
             }
         }
