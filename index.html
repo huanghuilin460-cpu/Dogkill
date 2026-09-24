@@ -1061,7 +1061,7 @@
             }
         }
 
-        // ==================== 投票階段（核心修正：按鈕永久可點擊） ====================
+        // ==================== 投票階段 ====================
         function startVoting() {
             gameState.phase = 'voting';
             document.getElementById('phase-name').textContent = '投票階段';
@@ -1112,7 +1112,6 @@
         }
 
         function submitVote() {
-            // 未選擇目標時提示，不強制禁用按鈕
             if (gameState.selectedVoteTarget === null) {
                 alert('請先選擇一位玩家');
                 return;
@@ -1186,7 +1185,8 @@
                 gameState.votedOut = votedOut;
             }
             
-            showVoteResult(result);
+            // 修復處：原代碼為 showVoteResult(result) 會報錯
+            showVoteResult(resultText);
         }
 
         function showVoteResult(text) {
