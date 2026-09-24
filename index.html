@@ -347,7 +347,7 @@
                     </div>
                     
                     <button id="submit-vote-btn" onclick="submitVote()" 
-                            class="w-full btn-large bg-amber-500 rounded-xl opacity-50 cursor-not-allowed" disabled>
+                            class="w-full btn-large bg-amber-500 rounded-xl">
                         確認投票
                     </button>
                 </div>
@@ -460,8 +460,7 @@
             werewolf: { name: '狼人', icon: '🐺', team: 'bad', desc: '白天時可以發表說話與投票，晚上時可以選擇擊殺一位玩家', hasNightAction: true }
         };
 
-        // ==================== 隨機工具函式（修正：直接修改原陣列） ====================
-        // 原地打亂陣列（直接修改傳入的陣列）
+        // ==================== 隨機工具函式 ====================
         function shuffleArray(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -470,11 +469,8 @@
             return array;
         }
 
-        // 回傳打亂後的新陣列（不修改原陣列）
         function shuffleArrayCopy(arr) {
-            const copy = [...arr];
-            shuffleArray(copy);
-            return copy;
+            return shuffleArray([...arr]);
         }
 
         // ==================== 設定頁面邏輯 ====================
@@ -549,7 +545,6 @@
             updateNameInputUI();
         }
 
-        // 修正：角色池隨機打亂正確生效
         function generateRolePool() {
             let pool = [];
             Object.entries(gameState.roles).forEach(([role, count]) => {
@@ -560,7 +555,7 @@
             
             let attempts = 0;
             do {
-                shuffleArray(pool); // 直接原地打亂pool陣列
+                shuffleArray(pool);
                 attempts++;
             } while (
                 gameState.lastGameRoles && 
@@ -1037,7 +1032,7 @@
                 .filter(p => !p.isDead)
                 .map(p => p.name);
             
-            shuffleArray(gameState.speechOrder); // 原地打亂發言順序
+            shuffleArray(gameState.speechOrder);
             
             gameState.currentSpeakerIndex = 0;
             updateSpeakerUI();
@@ -1066,7 +1061,7 @@
             }
         }
 
-        // ==================== 投票階段 ====================
+        // ==================== 投票階段（核心修正：按鈕永久可點擊） ====================
         function startVoting() {
             gameState.phase = 'voting';
             document.getElementById('phase-name').textContent = '投票階段';
@@ -1077,7 +1072,6 @@
             document.querySelector('#voting-area p').textContent = '點擊下方玩家選擇你要投出的對象';
             
             gameState.votes = {};
-            
             gameState.votingOrder = gameState.players.filter(p => !p.isDead).map(p => p.name);
             gameState.currentVoterIndex = 0;
             
@@ -1086,13 +1080,7 @@
 
         function showVotingScreen() {
             gameState.selectedVoteTarget = null;
-            
-            const voteBtn = document.getElementById('submit-vote-btn');
-            voteBtn.disabled = true;
-            voteBtn.classList.add('opacity-50', 'cursor-not-allowed');
-            
             generateVoteOptions();
-            
             showScreen('game-screen');
             updatePlayerStatusList();
         }
@@ -1102,7 +1090,7 @@
             container.innerHTML = '';
             
             const alivePlayers = gameState.players.filter(p => !p.isDead);
-            shuffleArray(alivePlayers); // 原地打亂投票選項
+            shuffleArray(alivePlayers);
             
             alivePlayers.forEach((player) => {
                 const btn = document.createElement('button');
@@ -1113,15 +1101,10 @@
                 btn.addEventListener('click', function() {
                     const allBtns = container.querySelectorAll('.vote-option');
                     allBtns.forEach(b => b.classList.remove('selected'));
-                    
                     this.classList.add('selected');
                     
                     const targetName = this.getAttribute('data-player-name');
                     gameState.selectedVoteTarget = gameState.players.findIndex(p => p.name === targetName);
-                    
-                    const voteBtn = document.getElementById('submit-vote-btn');
-                    voteBtn.disabled = false;
-                    voteBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                 });
                 
                 container.appendChild(btn);
@@ -1129,33 +1112,38 @@
         }
 
         function submitVote() {
+            // 未選擇目標時提示，不強制禁用按鈕
+            if (gameState.selectedVoteTarget === null) {
+                alert('請先選擇一位玩家');
+                return;
+            }
+            
+            // 獵人開槍模式
             if (gameState.phase === 'hunter-shot') {
-                if (gameState.selectedVoteTarget !== null) {
-                    const target = gameState.players[gameState.selectedVoteTarget];
-                    target.isDead = true;
-                    gameState.deadPlayers.push(target.name);
-                    gameState.hunterShot = true;
-                    
-                    alert(`🏹 獵人開槍帶走了 ${target.name}！`);
-                    
-                    if (checkGameOver()) return;
-                }
+                const target = gameState.players[gameState.selectedVoteTarget];
+                target.isDead = true;
+                gameState.deadPlayers.push(target.name);
+                gameState.hunterShot = true;
+                
+                alert(`🏹 獵人開槍帶走了 ${target.name}！`);
+                
+                if (checkGameOver()) return;
                 startDaySpeech();
                 return;
             }
             
+            // 一般投票模式
             const voterName = gameState.votingOrder[gameState.currentVoterIndex];
-            
-            if (gameState.selectedVoteTarget !== null) {
-                const target = gameState.players[gameState.selectedVoteTarget];
-                gameState.votes[voterName] = target.name;
-            }
+            const target = gameState.players[gameState.selectedVoteTarget];
+            gameState.votes[voterName] = target.name;
             
             gameState.currentVoterIndex++;
             
+            // 全部投完
             if (gameState.currentVoterIndex >= gameState.votingOrder.length) {
                 processVotingResults();
             } else {
+                // 下一位
                 showTransition('請傳遞給下一位投票者', '請輪流投票', () => {
                     showVotingScreen();
                 });
